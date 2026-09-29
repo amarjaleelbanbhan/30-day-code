@@ -8,7 +8,9 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx scripts/migrate.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "debug:search": "NODE_OPTIONS=--conditions=react-server tsx scripts/debug-search.ts",
+    "reindex": "NODE_OPTIONS=--conditions=react-server tsx scripts/reindex.ts"
   },
   "dependencies": {
     "@tiptap/extension-highlight": "^3.31.3",

@@ -8,6 +8,6 @@ export const GET = route<{ id: string }>(async (req, user, { id }) => {
   const query = (req.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 500);
   const lecture = req.nextUrl.searchParams.get("lecture");
   if (!query) return { hits: [] };
-  const hits = await search(user.id, id, query, { lectureIds: lecture && isUuid(lecture) ? [lecture] : undefined, limit: 30 });
-  return { hits: hits.map((h) => ({ ...h, label: citationLabel(h) })) };
+  const { hits, analysis } = await search(user.id, id, query, { lectureIds: lecture && isUuid(lecture) ? [lecture] : undefined, limit: 30 });
+  return { hits: hits.map((h) => ({ ...h, label: citationLabel(h) })), corrections: analysis.corrections, missing: analysis.missing };
 });

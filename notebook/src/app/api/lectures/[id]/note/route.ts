@@ -1,7 +1,6 @@
-import { after } from "next/server";
 import { body, notFound, route } from "@/lib/api";
 import { docToPlainText } from "@/lib/chunk";
-import { indexNote } from "@/lib/ingest";
+import { queueNote } from "@/lib/ingest";
 import { getOrCreateNote, saveNote } from "@/lib/repo";
 import { noteSaveSchema } from "@/lib/validation";
 
@@ -18,6 +17,6 @@ export const PUT = route<P>(async (req, user, { id }) => {
   // Plain text is derived server-side from the document, never trusted from the client.
   const saved = await saveNote(user.id, id, input.content, docToPlainText(input.content), reason);
   if (!saved) throw notFound();
-  after(() => indexNote(saved.noteId));
+  await queueNote(saved.noteId, saved.courseId); // debounced background re-index
   return { version: saved.version, updatedAt: saved.updated_at };
 });

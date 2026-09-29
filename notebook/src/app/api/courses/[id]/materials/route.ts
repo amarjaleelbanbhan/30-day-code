@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { after } from "next/server";
 import { HttpError, notFound, route } from "@/lib/api";
 import { detectType, isImage, MIME } from "@/lib/extract";
-import { processMaterial } from "@/lib/ingest";
+import { queueMaterial } from "@/lib/ingest";
 import { createMaterial, getCourse, getLecture, listMaterials } from "@/lib/repo";
 import * as storage from "@/lib/storage";
 import { isUuid, materialKindSchema } from "@/lib/validation";
@@ -38,6 +37,6 @@ export const POST = route<P>(async (req, user, { id: courseId }) => {
   await storage.put(key, bytes);
   const filename = file.name.replace(/[\u0000-\u001f\\/]/g, "_").slice(0, 200);
   const material = await createMaterial({ course_id: courseId, lecture_id: lectureId, kind, filename, mime: MIME[type], size_bytes: file.size, storage_key: key });
-  after(() => processMaterial(material.id));
+  await queueMaterial(material.id, courseId);
   return { material };
 });

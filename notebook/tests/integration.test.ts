@@ -60,7 +60,7 @@ describe("authorization boundaries", () => {
     expect(await repo.deleteCourse(bob, courseId)).toBe(false);
     expect(await repo.reorderLectures(bob, courseId, [lectureId])).toBe(false);
     expect(await repo.deleteMaterial(bob, materialId)).toBeNull();
-    expect(await search(bob, courseId, "process")).toEqual([]);
+    expect((await search(bob, courseId, "process")).hits).toEqual([]);
   });
   it("rejects cross-origin mutations", () => {
     const mk = (origin: string | null, method = "POST") =>
@@ -81,9 +81,9 @@ describe("course memory", () => {
   });
 
   it("finds material by meaning-bearing keywords and fuzzy matches, with citations", async () => {
-    const hits = await search(alice, courseId, "memory used when function runs");
+    const { hits } = await search(alice, courseId, "memory used when function runs");
     expect(hits[0]).toMatchObject({ page_no: 2, section: "Process Memory Layout", lecture_number: 1, filename: "lecture01.pptx" });
-    const fuzzy = await search(alice, courseId, "proces controll blok");
+    const { hits: fuzzy } = await search(alice, courseId, "proces controll blok");
     expect(fuzzy.some((h) => h.section === "Process Control Block")).toBe(true);
   });
 
@@ -94,7 +94,7 @@ describe("course memory", () => {
     ] });
     const s1 = await repo.saveNote(alice, lectureId, doc("wait and signal operations"), "v1");
     await indexNote(s1!.noteId);
-    const hits = await search(alice, courseId, "where did we study semaphores");
+    const { hits } = await search(alice, courseId, "where did we study semaphores");
     expect(hits[0]).toMatchObject({ source_type: "note", section: "Semaphores" });
 
     await repo.saveNote(alice, lectureId, doc("changed by AI"), "v2", "ai");
@@ -110,7 +110,7 @@ describe("course memory", () => {
     expect(r.mode).toBe("retrieval");
     expect(r.title).toBe("Lecture 01 — Processes");
     expect(r.outline![0]!.topics.map((t) => t.title)).toEqual(expect.arrayContaining(["Processes", "Process States", "Semaphores"]));
-    expect(r.sources.some((s) => s.label.startsWith("Lecture 01 → Slide 3"))).toBe(true);
+    expect(r.sources.some((s) => s.label.startsWith("Lecture 01 · Slide 3"))).toBe(true);
   });
 
   it("says when something is not in the course material", async () => {
@@ -142,13 +142,13 @@ describe("LLM path (OpenAI-compatible stub server)", () => {
     });
     await new Promise<void>((r) => server.listen(0, r));
     const port = (server.address() as { port: number }).port;
-    Object.assign(process.env, { LLM_PROVIDER: "openai", OPENAI_API_KEY: "test", OPENAI_BASE_URL: `http://127.0.0.1:${port}` });
+    Object.assign(process.env, { LLM_PROVIDER: "openai", LLM_MODEL: "stub", LLM_API_KEY: "test", LLM_BASE_URL: `http://127.0.0.1:${port}` });
     try {
       const r = await ask(alice, courseId, "What is a process?");
       expect(r.mode).toBe("answer");
       expect(r.answer).toContain("[1]");
-      expect(prompt).toMatch(/\[1\] Lecture 01 → Slide \d/);
-      expect(prompt).toContain("General knowledge is NOT allowed");
+      expect(prompt).toMatch(/\[1\] Lecture 01 · Slide \d/);
+      expect(prompt).toContain("do not use outside knowledge");
     } finally {
       delete process.env.LLM_PROVIDER;
       server.close();
