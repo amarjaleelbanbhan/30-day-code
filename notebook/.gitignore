@@ -1,0 +1,8 @@
+node_modules
+.next
+next-env.d.ts
+data
+.env.local
+*.tsbuildinfo
+# the repo root ignores Python "lib/" dirs; this is source
+!src/lib/

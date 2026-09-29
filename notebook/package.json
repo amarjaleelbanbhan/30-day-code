@@ -1,0 +1,57 @@
+{
+  "name": "notebook",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "test": "vitest run",
+    "debug:search": "NODE_OPTIONS=--conditions=react-server tsx scripts/debug-search.ts",
+    "reindex": "NODE_OPTIONS=--conditions=react-server tsx scripts/reindex.ts",
+    "bench": "NODE_OPTIONS=--conditions=react-server tsx scripts/bench.ts"
+  },
+  "dependencies": {
+    "@tiptap/extension-highlight": "^3.31.3",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/extension-mathematics": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
+    "@tiptap/extension-table-cell": "^3.31.3",
+    "@tiptap/extension-table-header": "^3.31.3",
+    "@tiptap/extension-table-row": "^3.31.3",
+    "@tiptap/extension-task-item": "^3.31.3",
+    "@tiptap/extension-task-list": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "fast-xml-parser": "^5.11.2",
+    "jszip": "^3.10.2",
+    "katex": "^0.18.9",
+    "mammoth": "^1.13.0",
+    "next": "^16.3.7",
+    "pg": "^8.23.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "unpdf": "^1.8.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.9",
+    "vitest": "^5.0.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
