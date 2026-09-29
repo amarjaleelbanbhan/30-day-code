@@ -103,6 +103,8 @@ describe("question generation (deterministic)", () => {
     expect(q.prompt.toLowerCase()).not.toContain("process");
     expect(g(q, "a process").verdict).toBe("correct");
     expect(g(q, "a program").misconceptions[0]!.correction).toMatch(/fits process/);
+    // Echoing the prompt's wording while naming the right term is not confusion.
+    expect(g(q, "A process is a program in execution with its own memory.")).toMatchObject({ verdict: "correct", misconceptions: [] });
   });
   it("fair trick true/false attaches a neighbour's description and explains the confusion", () => {
     const tf = candidates({ fact: facts.find((f) => f.term.toLowerCase() === "process")!, facts, conceptName: "process", aliases: [], where: "", diagramHint: false, seed: "x" })

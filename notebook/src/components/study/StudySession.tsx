@@ -372,7 +372,7 @@ function SessionSummary({ v, course, onRestart }: { v: View; course: { id: strin
                 <span className="min-w-0"><span className="text-fg-2">{i + 1}.</span> {it.prompt.split("\n")[0]}</span>
                 <span className={`shrink-0 rounded border px-1.5 text-xs ${VERDICT_STYLE[it.result!.verdict]}`}>{VERDICT_LABEL[it.result!.verdict]}</span>
               </button>
-              {open === it.itemId && <div className="border-t border-border px-3 pb-3"><Feedback item={it} r={it.result!} sessionId={v.id} courseId={course.id} act={async (_k, fn) => fn().catch(() => null)} busy={null} /></div>}
+              {open === it.itemId && <div className="border-t border-border px-3 pb-3">{it.prompt.includes("\n") && <p className="whitespace-pre-wrap pt-3 text-sm">{it.prompt.split("\n").slice(1).join("\n")}</p>}<Feedback item={it} r={it.result!} sessionId={v.id} courseId={course.id} act={async (_k, fn) => fn().catch(() => null)} busy={null} /></div>}
             </li>
           ))}
         </ol>

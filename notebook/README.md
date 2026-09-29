@@ -24,7 +24,6 @@ Everything the student writes or uploads becomes searchable, citable course memo
 | Command palette (`Ctrl/Cmd+K`), focus mode (`F`, `Esc`), light/dark/auto theme, tablet split view, phone layout | ✅ |
 
 ### Not built yet (next phases)
-- Interactive study mode (active-recall grading, spaced flashcards, stored quizzes) — today quizzes/flashcards are generated as text.
 - Concept graph / concept map and cross-lecture relationship extraction.
 - Handwriting recognition (OCR of strokes) and OCR of image uploads — drawings are indexed by their optional caption only.
 - Scanned PDFs without a text layer produce no text (no OCR yet).
@@ -62,6 +61,31 @@ question ─► intent router ─► strategy-specific hybrid retrieval ─► c
 * **Citations** are built from stored identity only (lecture, slide/page, file, speaker notes, note section) and validated after
   generation; unknown numbers are removed. Clicking one previews the slide/page (prev/next, highlighted) and *Open* jumps to the exact
   slide, PDF page, or note block (highlighted).
+
+## Study & exam mastery
+
+`/c/<course>/study` (also: Workspace ▸ Study, `Ctrl/Cmd+K` → "Study…", concept pages ▸ Study / Master this).
+Loop: **answer → grade → diagnose → teach → retest → mastery**.
+
+* **Entry points**: practice (course / lectures / concepts), Master this lecture/concept, Weak areas, Due review (spaced), Quick 5, Exam practice.
+* **Questions** (`src/lib/study/templates.ts`) are generated from facts literally stated in your material (definitions,
+  labelled lists, enumerations, sibling contrasts) — definition, indirect, MCQ, true/false (incl. fair contrast traps),
+  fill-in, comparison, list recall, odd-one-out, cross-lecture, diagram. Each stores its source chunks and a fingerprint;
+  near-duplicates are rejected. With an LLM configured, generated questions are validated against the evidence (zod schema,
+  grounding check, one corrective retry) and fall back to rule templates.
+* **Grading** (`grade.ts`): rubric points with synonyms/negation/clause handling → Correct / Mostly / Partial / Incorrect /
+  I don't know. Verdicts are always computed from points, never from a model's opinion. Misconceptions are detected from
+  course contrasts (e.g. describing the heap with the text section's description) and tracked per concept.
+* **Feedback**: what you missed, correct answer, why (quoted source), clickable citations; progressive hints (counted);
+  "I don't know" → short teaching from your material → the concept returns later in a different format.
+* **Mastery** (`mastery.ts`): per-level (remember → transfer) scores; easy recognition wins alone never reach *Mastered*;
+  states Not started / Learning / Needs review / Strong / Mastered; SM-2 spacing for review.
+* **Exam mode**: no hints or feedback until submit; then per-question solutions, breakdown by type, misconceptions, next steps.
+* Sessions persist (resume after reload); attempts are immutable history.
+
+Limits: drawings in diagram answers are self-checked against the listed parts (no vision grading). Rule grading
+recognises paraphrases through a general synonym list and (if embeddings are configured) semantic similarity; unusual
+wording can still be under-credited.
 
 ## AI setup — fully local, cloud, or search-only
 
