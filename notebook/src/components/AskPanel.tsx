@@ -222,7 +222,7 @@ function Groups({ groups, onPick, active }: { groups: NonNullable<AskResult["gro
 type Page = { page_no: number; title: string | null; body: string; speaker_notes: string | null };
 
 /** Inline verification: shows the cited slide/page (with neighbours) or note excerpt, matching text highlighted. */
-function SourcePreview({ courseId, source, onClose }: { courseId: string; source: Source; onClose: () => void }) {
+export function SourcePreview({ courseId, source, onClose }: { courseId: string; source: Source; onClose: () => void }) {
   const router = useRouter();
   const [pages, setPages] = useState<Page[] | null>(null);
   const [page, setPage] = useState(source.pageNo ?? 1);

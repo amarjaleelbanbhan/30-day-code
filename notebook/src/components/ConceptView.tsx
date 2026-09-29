@@ -2,7 +2,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ConceptEvidence } from "@/lib/concepts";
+import { useRouter } from "next/navigation";
+import type { Level } from "@/lib/study/types";
 import { AskPanel, sourceHref, type PanelTab } from "./AskPanel";
+import { startStudy } from "./study/start";
 
 type Ev = ConceptEvidence & { label: string };
 type Related = { id: string; name: string; kind: string; evidence: number; direction: string };
@@ -10,7 +13,17 @@ type Related = { id: string; name: string; kind: string; evidence: number; direc
 const pad = (n: number | null) => (n == null ? "—" : String(n).padStart(2, "0"));
 const snippet = (s: string) => s.replace(/\s+/g, " ").slice(0, 240);
 
-export function ConceptView({ course, concept, related, evidence }: { course: { id: string; name: string }; concept: { id: string; name: string; aliases: string[] }; related: Related[]; evidence: Ev[] }) {
+type MasteryInfo = { state: string; label: string; attempts: number; correct: number; partial: number; incorrect: number; levels: Partial<Record<Level, { n: number; s: number }>>; nextReview: string | null; misconceptions: { correction: string; n: number }[] };
+const LEVEL_LABEL: Record<Level, string> = { remember: "Recognise", understand: "Explain", apply: "Apply", analyze: "Compare", transfer: "Connect" };
+
+export function ConceptView({ course, concept, related, evidence, mastery }: { course: { id: string; name: string }; concept: { id: string; name: string; aliases: string[] }; related: Related[]; evidence: Ev[]; mastery: MasteryInfo | null }) {
+  const router = useRouter();
+  const [starting, setStarting] = useState<string | null>(null);
+  const study = async (kind: "practice" | "master") => {
+    setStarting(kind);
+    try { router.push(await startStudy(course.id, { kind, scope: { type: "concept", conceptIds: [concept.id], label: concept.name }, config: kind === "practice" ? { count: 6 } : {} })); }
+    catch (e) { alert(e instanceof Error ? e.message : "Could not start"); setStarting(null); }
+  };
   const [panel, setPanel] = useState<PanelTab | null>(null);
   const href = (e: Ev) => sourceHref(course.id, { lectureId: e.lecture_id, materialId: e.material_id, pageNo: e.page_no, anchor: e.anchor, section: e.section });
   const lectures = new Map<string, { label: string; items: Ev[] }>();
@@ -49,7 +62,20 @@ export function ConceptView({ course, concept, related, evidence }: { course: { 
         {concept.aliases.length > 0 && <p className="mt-1 text-sm uppercase text-fg-2">{concept.aliases.join(" · ")}</p>}
         <div className="mt-5 flex flex-wrap gap-2">
           <button className="btn btn-primary" onClick={() => setPanel("ask")}>Reconstruct from course</button>
+          <button className="btn" onClick={() => study("practice")} disabled={!!starting}>{starting === "practice" ? "Preparing…" : "Study this concept"}</button>
+          <button className="btn" onClick={() => study("master")} disabled={!!starting}>{starting === "master" ? "Preparing…" : "Master this"}</button>
         </div>
+
+        {mastery && (
+          <section className="mt-6 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+            <p><b>{mastery.label}</b> · {mastery.attempts} answer{mastery.attempts === 1 ? "" : "s"} ({mastery.correct} right, {mastery.partial} partial, {mastery.incorrect} wrong)
+              {mastery.nextReview && <> · next review {new Date(mastery.nextReview).toLocaleDateString()}</>}</p>
+            <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-fg-2">
+              {(Object.keys(LEVEL_LABEL) as Level[]).map((l) => <span key={l}>{LEVEL_LABEL[l]}: {mastery.levels[l]?.n ? (mastery.levels[l]!.s >= 0.75 ? "solid" : mastery.levels[l]!.s >= 0.4 ? "shaky" : "weak") : "not tested"}</span>)}
+            </p>
+            {mastery.misconceptions.length > 0 && <p className="mt-1 text-xs text-danger">Past misconception: {mastery.misconceptions[0]!.correction}</p>}
+          </section>
+        )}
 
         <section className="mt-8">
           <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-2">Appears in</h2>

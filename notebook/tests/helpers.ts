@@ -87,3 +87,23 @@ export async function stubOllama(respond: (system: string, user: string) => stri
     close: () => new Promise<void>((r) => server.close(() => r())),
   };
 }
+
+export const OS_TITLES = ["Introduction to Operating Systems", "Operating-System Structures", "System Calls", "Kernel Architectures", "Processes", "Threads", "CPU Scheduling"];
+
+/** Creates the 7-lecture OS fixture course for a new user, with student notes, fully indexed. */
+export async function setupOsCourse(A: Awaited<ReturnType<typeof app>>) {
+  const userId = await A.user();
+  const courseId = (await A.repo.createCourse(userId, { name: "Operating Systems", code: "CS330", instructor: null, semester: null, description: null })).id;
+  const lec: Record<number, string> = {};
+  for (const [i, title] of OS_TITLES.entries()) {
+    const n = i + 1;
+    lec[n] = (await A.repo.createLecture(userId, courseId, { number: n, title, lectureDate: null }))!.id;
+    await A.upload(courseId, lec[n]!, `os/lecture${String(n).padStart(2, "0")}.pptx`, "slides");
+  }
+  await A.upload(courseId, lec[7]!, "os/scheduling-teacher-notes.md", "notes");
+  await A.upload(courseId, null, "os/os-textbook.pdf", "book");
+  const s5 = await A.repo.saveNote(userId, lec[5]!, { type: "doc", content: [h2("My notes on process states"), p("Mnemonic for the process states: Never Really Run While Tired."), sketch("process state diagram with all transitions")] }, "");
+  await A.ingest.queueNote(s5!.noteId, courseId);
+  await A.flushJobs();
+  return { userId, courseId, lec };
+}

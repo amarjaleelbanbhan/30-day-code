@@ -56,6 +56,7 @@ export function CourseView({ course, lectures: initial, courseMaterials: initial
     { id: "recall-course", label: "Recall course", run: () => openPanel("ask", "Recall the whole course") },
     { id: "quiz", label: "Create quiz from all lectures", run: () => openPanel("ask", "Create quiz questions from all lectures, with answers at the end") },
     { id: "concepts", label: "Concepts", run: () => router.push(`/c/${course.id}/concepts`) },
+    { id: "study", label: "Study", group: "Study", run: () => router.push(`/c/${course.id}/study`) },
     { id: "home", label: "All courses", run: () => router.push("/") },
     ...lectures.map((l) => ({ id: `open-${l.id}`, label: `Lecture ${pad2(l.number)}${l.title ? ` — ${l.title}` : ""}`, group: "Open lecture", run: () => router.push(`/c/${course.id}/l/${l.id}`) })),
     ...lectures.filter((l) => l.number != null).map((l) => ({ id: `recall-${l.id}`, label: `Recall lecture ${pad2(l.number)}`, group: "Recall", run: () => openPanel("ask", `Recall lecture ${l.number}`) })),
@@ -97,6 +98,7 @@ export function CourseView({ course, lectures: initial, courseMaterials: initial
             <button className="btn" onClick={() => openPanel("ask")}>Ask Course AI</button>
             <button className="btn" onClick={() => openPanel("ask", "Recall the whole course")}>Recall Course</button>
             <Link className="btn" href={`/c/${course.id}/concepts`}>Concepts</Link>
+            <Link className="btn" href={`/c/${course.id}/study`}>Study</Link>
           </div>
         </header>
 

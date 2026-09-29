@@ -52,7 +52,7 @@ function pathFor(p: number[]): string {
   return d + `L${p[p.length - 2]} ${p[p.length - 1]}`;
 }
 
-const ShapeEl = memo(function ShapeEl({ s, selected }: { s: Shape; selected?: boolean }) {
+export const ShapeEl = memo(function ShapeEl({ s, selected }: { s: Shape; selected?: boolean }) {
   const common = { stroke: s.c, strokeWidth: s.w, fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   const [x1 = 0, y1 = 0, x2 = 0, y2 = 0] = s.p;
   const sel = selected ? { filter: "drop-shadow(0 0 2px var(--accent))" } : undefined;

@@ -12,6 +12,7 @@ import type { SyncStatus } from "./editor/useNoteSync";
 import { HistoryPanel } from "./HistoryPanel";
 import { Markdown } from "./Markdown";
 import { MaterialPanel, type MaterialItem } from "./MaterialPanel";
+import { startStudy } from "./study/start";
 import { ThemeToggle } from "./ThemeToggle";
 
 type Right = "material" | "ask" | "search" | "history" | "ai" | null;
@@ -45,6 +46,13 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
   const [status, setStatus] = useState<SyncStatus>("saved");
   const [ai, setAi] = useState<{ label: string; busy: boolean; markdown?: string; error?: string } | null>(null);
   const [aiMenu, setAiMenu] = useState(false);
+  const [studyMenu, setStudyMenu] = useState(false);
+  const study = useCallback(async (kind: "practice" | "master" | "exam") => {
+    setStudyMenu(false);
+    try {
+      router.push(await startStudy(course.id, { kind, scope: { type: "lecture", lectureIds: [lecture.id], label: `Lecture ${pad2(lecture.number)}` }, config: kind === "exam" ? { count: 8 } : {} }));
+    } catch (e) { alert(e instanceof Error ? e.message : "Could not start studying"); }
+  }, [course.id, lecture.id, lecture.number, router]);
   const apiRef = useRef<EditorApi | null>(null);
 
   const matParam = params.get("m");
@@ -145,7 +153,7 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
       if (mod && e.key === "Enter") { e.preventDefault(); openAsk(); return; }
       if (e.key === "Escape") {
         if (focus) { setFocus(false); return; }
-        if (aiMenu) { setAiMenu(false); return; }
+        if (aiMenu || studyMenu) { setAiMenu(false); setStudyMenu(false); return; }
         if (right && !isTyping(e)) { setRight(null); return; }
       }
       if (mod || e.altKey || isTyping(e)) return;
@@ -156,7 +164,7 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focus, right, aiMenu, openAsk, insertDrawing, toggleRight]);
+  }, [focus, right, aiMenu, studyMenu, openAsk, insertDrawing, toggleRight]);
 
   const idx = lectures.findIndex((l) => l.id === lecture.id);
   const commands = useMemo<Command[]>(() => [
@@ -169,6 +177,10 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
     { id: "recall", label: `Recall lecture ${pad2(lecture.number)}`, run: () => openAsk(`Recall lecture ${lecture.number}`) },
     { id: "recall-course", label: "Recall course", run: () => openAsk("Recall the whole course") },
     { id: "concepts", label: "Concepts", run: () => router.push(`/c/${course.id}/concepts`) },
+    { id: "study-lecture", label: "Study this lecture", group: "Study", run: () => void study("practice") },
+    { id: "master-lecture", label: "Master this lecture", group: "Study", run: () => void study("master") },
+    { id: "exam-lecture", label: "Exam practice on this lecture", group: "Study", run: () => void study("exam") },
+    { id: "study-hub", label: "Study overview", group: "Study", run: () => router.push(`/c/${course.id}/study`) },
     { id: "quiz", label: "Create quiz", run: () => runAi("quiz", "Quiz") },
     { id: "search", label: "Search course", shortcut: "Ctrl ⇧ F", run: () => setRight("search") },
     { id: "history", label: "Version history", run: () => setRight("history") },
@@ -176,7 +188,7 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
     ...AI_ACTIONS.map(([a, label]) => ({ id: `ai-${a}`, label, group: "AI", run: () => runAi(a, label) })),
     { id: "new-lecture", label: "New lecture", run: () => router.push(`/c/${course.id}`) },
     ...lectures.map((l) => ({ id: `open-${l.id}`, label: `Lecture ${pad2(l.number)}${l.title ? ` — ${l.title}` : ""}`, group: "Open lecture", run: () => router.push(`/c/${course.id}/l/${l.id}`) })),
-  ], [lectures, lecture.number, course.id, router, openAsk, runAi, insertDrawing]);
+  ], [lectures, lecture.number, course.id, router, openAsk, runAi, insertDrawing, study]);
   useRegisterCommands("workspace", commands);
 
   const statusText = { saved: "Saved", saving: "Saving…", unsaved: "Saving…", offline: "Offline — saved on this device" }[status];
@@ -270,6 +282,17 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
           <div className="flex items-center gap-0.5">
             <button className={`btn h-8 px-2.5 text-xs ${right === "material" ? "" : "btn-ghost"}`} onClick={() => toggleRight("material")} title="Lecture material (])">Material</button>
             <button className={`btn h-8 px-2.5 text-xs ${right === "ask" || right === "search" ? "" : "btn-ghost"}`} onClick={() => (right === "ask" ? setRight(null) : openAsk())} title="Ask course (Ctrl+Enter)">Ask</button>
+            <div className="relative">
+              <button className="btn btn-ghost h-8 px-2.5 text-xs" aria-haspopup="menu" aria-expanded={studyMenu} onClick={() => setStudyMenu((o) => !o)}>Study</button>
+              {studyMenu && (
+                <ul role="menu" className="absolute right-0 top-9 z-40 w-56 rounded-lg border border-border bg-surface py-1 shadow-lg">
+                  {([["practice", "Study this lecture"], ["master", "Master this lecture"], ["exam", "Exam practice"]] as const).map(([k, l]) => (
+                    <li key={k} role="none"><button role="menuitem" className="w-full px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => void study(k)}>{l}</button></li>
+                  ))}
+                  <li role="none"><Link role="menuitem" className="block px-3 py-2 text-sm hover:bg-muted" href={`/c/${course.id}/study`}>Study overview</Link></li>
+                </ul>
+              )}
+            </div>
             <div className="relative">
               <button className="btn btn-ghost h-8 px-2.5 text-xs" aria-haspopup="menu" aria-expanded={aiMenu} onClick={() => setAiMenu((o) => !o)}>AI</button>
               {aiMenu && (
