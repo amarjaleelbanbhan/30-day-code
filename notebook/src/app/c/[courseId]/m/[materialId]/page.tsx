@@ -14,6 +14,6 @@ export default async function Page({ params }: { params: Promise<{ courseId: str
   if (!course || !m || m.course_id !== courseId) notFound();
   return (
     <MaterialPage course={{ id: course.id, name: course.name }}
-      material={{ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: m.error, mime: m.mime, lectureId: m.lecture_id, pageCount: m.page_count }} />
+      material={{ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: m.error, embedStatus: m.embed_status, embedError: m.embed_error, mime: m.mime, lectureId: m.lecture_id, pageCount: m.page_count }} />
   );
 }

@@ -200,6 +200,10 @@ describe("concept index", () => {
     expect(pcb.aliases).toContain("pcb");
     expect(pcb.first_lecture).toBe(5);
     expect((await getConcept("00000000-0000-0000-0000-000000000000", pcb.id))).toBeNull(); // other users can't read it
+    // "Process control" (a system-call category, Lecture 3) must not be counted inside "Process Control Block" (Lecture 5).
+    const pc = cs.find((c) => normConcept(c.name) === "process control")!;
+    expect(pc.first_lecture).toBe(3);
+    expect(pc.lecture_count).toBe(1);
   });
   it("relations come only from evidence (name containment or co-occurrence)", async () => {
     const cs = await listConcepts(userId, courseId);

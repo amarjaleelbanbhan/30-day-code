@@ -5,7 +5,7 @@ import { Fragment, type ReactNode } from "react";
 // Minimal, safe Markdown renderer for AI answers: builds React elements (no raw HTML injection).
 // Supports headings, lists, code blocks, bold/italic/code, $math$, and [n] citation markers.
 
-type Props = { text: string; onCite?: (n: number) => void };
+type Props = { text: string; onCite?: (n: number) => void; onLecture?: (n: number) => void };
 
 function Math({ tex, block }: { tex: string; block?: boolean }) {
   try {
@@ -16,16 +16,16 @@ function Math({ tex, block }: { tex: string; block?: boolean }) {
   }
 }
 
-function inline(src: string, onCite?: (n: number) => void): ReactNode[] {
+function inline(src: string, onCite?: (n: number) => void, onLecture?: (n: number) => void): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(\$[^$\n]+\$)|(\[(\d{1,3})\])/g;
+  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(\$[^$\n]+\$)|(\[(\d{1,3})\])|(\[L(\d{1,4})\])/g;
   let last = 0;
   let k = 0;
   for (const m of src.matchAll(re)) {
     if (m.index! > last) out.push(src.slice(last, m.index));
     const t = m[0];
     if (m[1]) out.push(<code key={k++}>{t.slice(1, -1)}</code>);
-    else if (m[2]) out.push(<strong key={k++}>{inline(t.slice(2, -2), onCite)}</strong>);
+    else if (m[2]) out.push(<strong key={k++}>{inline(t.slice(2, -2), onCite, onLecture)}</strong>);
     else if (m[3]) out.push(<em key={k++}>{t.slice(1, -1)}</em>);
     else if (m[4]) out.push(<Math key={k++} tex={t.slice(1, -1)} />);
     else if (m[5]) {
@@ -33,6 +33,11 @@ function inline(src: string, onCite?: (n: number) => void): ReactNode[] {
       out.push(onCite
         ? <button key={k++} type="button" className="cite" onClick={() => onCite(n)} aria-label={`Source ${n}`}>[{n}]</button>
         : <sup key={k++} className="cite">[{n}]</sup>);
+    } else if (m[7]) {
+      const n = Number(m[8]);
+      out.push(onLecture
+        ? <button key={k++} type="button" className="cite" onClick={() => onLecture(n)} aria-label={`Open lecture ${n}`}>L{n}</button>
+        : <sup key={k++} className="cite">L{n}</sup>);
     }
     last = m.index! + t.length;
   }
@@ -40,7 +45,7 @@ function inline(src: string, onCite?: (n: number) => void): ReactNode[] {
   return out;
 }
 
-export function Markdown({ text, onCite }: Props) {
+export function Markdown({ text, onCite, onLecture }: Props) {
   const lines = text.replace(/\r/g, "").split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
@@ -65,7 +70,7 @@ export function Markdown({ text, onCite }: Props) {
     const h = line.match(/^(#{1,4})\s+(.*)$/);
     if (h) {
       const Tag = (h[1]!.length <= 2 ? "h2" : "h3") as "h2" | "h3";
-      blocks.push(<Tag key={k++}>{inline(h[2]!, onCite)}</Tag>);
+      blocks.push(<Tag key={k++}>{inline(h[2]!, onCite, onLecture)}</Tag>);
       i++;
       continue;
     }
@@ -78,19 +83,19 @@ export function Markdown({ text, onCite }: Props) {
         while (i < lines.length && /^\s{2,}\S/.test(lines[i]!) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i]!)) items[items.length - 1] += " " + lines[i++]!.trim();
       }
       const L = ordered ? "ol" : "ul";
-      blocks.push(<L key={k++}>{items.map((it, j) => <li key={j}>{inline(it, onCite)}</li>)}</L>);
+      blocks.push(<L key={k++}>{items.map((it, j) => <li key={j}>{inline(it, onCite, onLecture)}</li>)}</L>);
       continue;
     }
     if (line.startsWith(">")) {
       const q: string[] = [];
       while (i < lines.length && lines[i]!.startsWith(">")) q.push(lines[i++]!.replace(/^>\s?/, ""));
-      blocks.push(<blockquote key={k++} className="border-l-2 border-border pl-3 text-fg-2">{inline(q.join(" "), onCite)}</blockquote>);
+      blocks.push(<blockquote key={k++} className="border-l-2 border-border pl-3 text-fg-2">{inline(q.join(" "), onCite, onLecture)}</blockquote>);
       continue;
     }
     if (!line.trim()) { i++; continue; }
     const para: string[] = [];
     while (i < lines.length && lines[i]!.trim() && !/^(#{1,4}\s|```|>|\s*([-*+]|\d+[.)])\s+|\s*\$\$)/.test(lines[i]!)) para.push(lines[i++]!);
-    blocks.push(<p key={k++}>{para.map((p, j) => <Fragment key={j}>{j > 0 && <br />}{inline(p, onCite)}</Fragment>)}</p>);
+    blocks.push(<p key={k++}>{para.map((p, j) => <Fragment key={j}>{j > 0 && <br />}{inline(p, onCite, onLecture)}</Fragment>)}</p>);
   }
   return <div className="prose-nb">{blocks}</div>;
 }

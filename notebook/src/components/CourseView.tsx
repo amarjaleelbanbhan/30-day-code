@@ -6,11 +6,12 @@ import { api, isTyping, pad2, timeAgo } from "@/lib/client";
 import { ACCEPT } from "@/lib/extract/accept";
 import { AskPanel, type PanelTab } from "./AskPanel";
 import { useRegisterCommands, type Command } from "./commands";
+import { isBusy, MaterialStatus } from "./MaterialStatus";
 import { ThemeToggle } from "./ThemeToggle";
 import { uploadFile } from "./upload";
 
 export type LectureItem = { id: string; number: number | null; title: string; date: string | null; materials: string[]; lastEdited: string };
-type CourseMat = { id: string; filename: string; kind: string; status: string; error: string | null };
+type CourseMat = { id: string; filename: string; kind: string; status: string; error: string | null; embedStatus?: string; embedError?: string | null };
 type Course = { id: string; name: string; code: string | null; instructor: string | null; semester: string | null };
 
 export function CourseView({ course, lectures: initial, courseMaterials: initialMats }: { course: Course; lectures: LectureItem[]; courseMaterials: CourseMat[] }) {
@@ -22,6 +23,11 @@ export function CourseView({ course, lectures: initial, courseMaterials: initial
   const [dragId, setDragId] = useState<string | null>(null);
 
   useEffect(() => setLectures(initial), [initial]);
+
+  const refreshMats = useCallback(async () => {
+    const r = await api<{ materials: { id: string; filename: string; kind: string; status: string; error: string | null; embed_status: string; embed_error: string | null; lecture_id: string | null }[] }>(`/api/courses/${course.id}/materials`).catch(() => null);
+    if (r) setMats(r.materials.filter((m) => !m.lecture_id).map((m) => ({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: m.error, embedStatus: m.embed_status, embedError: m.embed_error })));
+  }, [course.id]);
 
   const openPanel = useCallback((tab: PanelTab, q?: string) => setPanel({ tab, q }), []);
 
@@ -38,20 +44,18 @@ export function CourseView({ course, lectures: initial, courseMaterials: initial
 
   // Poll while course-level materials are processing.
   useEffect(() => {
-    if (!mats.some((m) => m.status === "pending" || m.status === "processing")) return;
-    const t = setInterval(async () => {
-      const r = await api<{ materials: (CourseMat & { lecture_id: string | null })[] }>(`/api/courses/${course.id}/materials`).catch(() => null);
-      if (r) setMats(r.materials.filter((m) => !m.lecture_id));
-    }, 2000);
+    if (!mats.some(isBusy)) return;
+    const t = setInterval(() => void refreshMats(), 2000);
     return () => clearInterval(t);
-  }, [mats, course.id]);
+  }, [mats, refreshMats]);
 
   const commands = useMemo<Command[]>(() => [
     { id: "new-lecture", label: "New lecture", run: () => setCreating(true) },
     { id: "search", label: "Search course", shortcut: "Ctrl ⇧ F", run: () => openPanel("search") },
     { id: "ask", label: "Ask AI", shortcut: "Ctrl ↵", run: () => openPanel("ask") },
-    { id: "recall-course", label: "Recall course", run: () => openPanel("ask", "Recall course") },
+    { id: "recall-course", label: "Recall course", run: () => openPanel("ask", "Recall the whole course") },
     { id: "quiz", label: "Create quiz from all lectures", run: () => openPanel("ask", "Create quiz questions from all lectures, with answers at the end") },
+    { id: "concepts", label: "Concepts", run: () => router.push(`/c/${course.id}/concepts`) },
     { id: "home", label: "All courses", run: () => router.push("/") },
     ...lectures.map((l) => ({ id: `open-${l.id}`, label: `Lecture ${pad2(l.number)}${l.title ? ` — ${l.title}` : ""}`, group: "Open lecture", run: () => router.push(`/c/${course.id}/l/${l.id}`) })),
     ...lectures.filter((l) => l.number != null).map((l) => ({ id: `recall-${l.id}`, label: `Recall lecture ${pad2(l.number)}`, group: "Recall", run: () => openPanel("ask", `Recall lecture ${l.number}`) })),
@@ -91,7 +95,8 @@ export function CourseView({ course, lectures: initial, courseMaterials: initial
             <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New Lecture</button>
             <button className="btn" onClick={() => openPanel("search")}>Search Course</button>
             <button className="btn" onClick={() => openPanel("ask")}>Ask Course AI</button>
-            <button className="btn" onClick={() => openPanel("ask", "Recall course")}>Recall Course</button>
+            <button className="btn" onClick={() => openPanel("ask", "Recall the whole course")}>Recall Course</button>
+            <Link className="btn" href={`/c/${course.id}/concepts`}>Concepts</Link>
           </div>
         </header>
 
@@ -126,7 +131,7 @@ export function CourseView({ course, lectures: initial, courseMaterials: initial
           </ul>
         </section>
 
-        <CourseMaterials courseId={course.id} mats={mats} setMats={setMats} />
+        <CourseMaterials courseId={course.id} mats={mats} setMats={setMats} refresh={refreshMats} />
 
         <footer className="mt-16 flex items-center justify-between text-xs text-fg-2">
           <span><span className="kbd">Ctrl K</span> commands</span>
@@ -143,7 +148,7 @@ export function CourseView({ course, lectures: initial, courseMaterials: initial
   );
 }
 
-function CourseMaterials({ courseId, mats, setMats }: { courseId: string; mats: CourseMat[]; setMats: (m: CourseMat[]) => void }) {
+function CourseMaterials({ courseId, mats, setMats, refresh }: { courseId: string; mats: CourseMat[]; setMats: (m: CourseMat[]) => void; refresh: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState("outline");
   async function onFiles(files: FileList | null) {
@@ -153,7 +158,7 @@ function CourseMaterials({ courseId, mats, setMats }: { courseId: string; mats: 
     for (const f of Array.from(files)) {
       try {
         const m = await uploadFile(courseId, f, { kind });
-        added.push({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: null });
+        added.push({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: null, embedStatus: "none" });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Upload failed");
       }
@@ -168,7 +173,7 @@ function CourseMaterials({ courseId, mats, setMats }: { courseId: string; mats: 
           {mats.map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-3">
               <Link href={`/c/${courseId}/m/${m.id}`} className="truncate hover:underline">{m.filename}</Link>
-              <span className="shrink-0 text-xs text-fg-2">{m.kind} · <MaterialStatus status={m.status} error={m.error} /></span>
+              <span className="shrink-0 text-xs text-fg-2">{m.kind} · <MaterialStatus id={m.id} status={m.status} error={m.error} embedStatus={m.embedStatus} embedError={m.embedError} onRetried={refresh} /></span>
             </li>
           ))}
         </ul>
@@ -185,17 +190,13 @@ function CourseMaterials({ courseId, mats, setMats }: { courseId: string; mats: 
   );
 }
 
-export function MaterialStatus({ status, error }: { status: string; error?: string | null }) {
-  if (status === "ready") return <span>indexed</span>;
-  if (status === "failed") return <span className="text-danger" title={error ?? ""}>could not read</span>;
-  return <span>reading…</span>;
-}
 
 function NewLecture({ courseId, nextNumber, onCancel }: { courseId: string; nextNumber: number; onCancel?: () => void }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
+  const [busyLabel, setBusyLabel] = useState("Creating…");
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -209,6 +210,7 @@ function NewLecture({ courseId, nextNumber, onCancel }: { courseId: string; next
       const files = f.getAll("files").filter((x): x is File => x instanceof File && x.size > 0);
       const kind = String(f.get("kind") || "slides");
       const failures: string[] = [];
+      if (files.length) setBusyLabel(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}…`);
       await Promise.all(files.map((file) => uploadFile(courseId, file, { lectureId: lecture.id, kind }).catch((err: Error) => failures.push(err.message))));
       if (failures.length) alert(`Some files could not be uploaded:\n${failures.join("\n")}`);
       router.push(`/c/${courseId}/l/${lecture.id}`);
@@ -237,7 +239,7 @@ function NewLecture({ courseId, nextNumber, onCancel }: { courseId: string; next
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <div className="flex gap-2">
-        <button className="btn btn-primary" disabled={busy}>{busy ? "Creating…" : "Create & start writing"}</button>
+        <button className="btn btn-primary" disabled={busy}>{busy ? busyLabel : "Create & start writing"}</button>
         {onCancel && <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>}
       </div>
     </form>

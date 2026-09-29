@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client";
 import { ACCEPT } from "@/lib/extract/accept";
-import { MaterialStatus } from "./CourseView";
+import { isBusy, MaterialStatus } from "./MaterialStatus";
 import { uploadFile } from "./upload";
 
-export type MaterialItem = { id: string; filename: string; kind: string; status: string; error: string | null; mime: string; lectureId: string | null; pageCount: number | null };
+export type MaterialItem = { id: string; filename: string; kind: string; status: string; error: string | null; embedStatus?: string; embedError?: string | null; mime: string; lectureId: string | null; pageCount: number | null };
 type Page = { page_no: number; title: string | null; body: string; speaker_notes: string | null };
 
 type Props = {
@@ -27,6 +27,8 @@ export function MaterialPanel({ courseId, lectureId, materials, onMaterials, sel
   const [zoom, setZoom] = useState(1);
   const [find, setFind] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const isPdf = current?.mime === "application/pdf";
@@ -38,17 +40,18 @@ export function MaterialPanel({ courseId, lectureId, materials, onMaterials, sel
     if (!current) return;
     let stop = false;
     const load = async () => {
-      const r = await api<{ material: { status: string; error: string | null; page_count: number | null }; pages: Page[] }>(`/api/materials/${current.id}`).catch(() => null);
+      const r = await api<{ material: { status: string; error: string | null; page_count: number | null; embed_status: string; embed_error: string | null }; pages: Page[] }>(`/api/materials/${current.id}`).catch(() => null);
       if (stop || !r) return;
       setPages(r.pages);
-      if (r.material.status !== current.status)
-        onMaterials(materials.map((m) => (m.id === current.id ? { ...m, status: r.material.status, error: r.material.error, pageCount: r.material.page_count } : m)));
-      if (r.material.status === "pending" || r.material.status === "processing") setTimeout(load, 1500);
+      const next = { status: r.material.status, embedStatus: r.material.embed_status };
+      if (next.status !== current.status || next.embedStatus !== current.embedStatus)
+        onMaterials(materials.map((m) => (m.id === current.id ? { ...m, ...next, error: r.material.error, embedError: r.material.embed_error, pageCount: r.material.page_count } : m)));
+      if (isBusy(next)) setTimeout(load, 1500);
     };
     void load();
     return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, current?.status]);
+  }, [current?.id, current?.status, current?.embedStatus, retryTick]);
 
   useEffect(() => { if (isImage) setView("original"); }, [isImage]);
 
@@ -79,6 +82,7 @@ export function MaterialPanel({ courseId, lectureId, materials, onMaterials, sel
     setUploadError(null);
     const added: MaterialItem[] = [];
     for (const f of Array.from(files)) {
+      setUploading(`Uploading ${f.name}…`);
       try {
         const m = await uploadFile(courseId, f, { lectureId: lectureId ?? undefined, kind: lectureId ? "slides" : "other" });
         added.push({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: null, mime: f.type || "", lectureId, pageCount: null });
@@ -86,6 +90,7 @@ export function MaterialPanel({ courseId, lectureId, materials, onMaterials, sel
         setUploadError(e instanceof Error ? e.message : "Upload failed");
       }
     }
+    setUploading(null);
     if (added.length) {
       // Refresh to get server-detected mime types.
       const r = await api<{ materials: { id: string; mime: string }[] }>(`/api/courses/${courseId}/materials`).catch(() => null);
@@ -115,6 +120,7 @@ export function MaterialPanel({ courseId, lectureId, materials, onMaterials, sel
           Upload<input type="file" multiple accept={ACCEPT} className="sr-only" onChange={(e) => { void onFiles(e.target.files); e.target.value = ""; }} />
         </label>
       </div>
+      {uploading && <p role="status" className="px-3 pt-2 text-xs text-fg-2">{uploading}</p>}
       {uploadError && <p role="alert" className="px-3 pt-2 text-xs text-danger">{uploadError}</p>}
 
       {current && (
@@ -135,7 +141,8 @@ export function MaterialPanel({ courseId, lectureId, materials, onMaterials, sel
               </>
             )}
             <span className="flex-1" />
-            <span className="text-fg-2"><MaterialStatus status={current.status} error={current.error} /></span>
+            <span className="text-fg-2"><MaterialStatus id={current.id} status={current.status} error={current.error} embedStatus={current.embedStatus} embedError={current.embedError}
+              onRetried={() => { onMaterials(materials.map((m) => (m.id === current.id ? { ...m, status: m.status === "failed" ? "pending" : m.status, embedStatus: m.embedStatus === "failed" ? "pending" : m.embedStatus } : m))); setRetryTick((t) => t + 1); }} /></span>
           </div>
           <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
             <input className="input h-7 text-xs" placeholder={`Search ${unit.toLowerCase()}s…`} value={find} onChange={(e) => setFind(e.target.value)} aria-label="Search this material" />

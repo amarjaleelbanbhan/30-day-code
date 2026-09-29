@@ -17,7 +17,7 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
     <CourseView
       course={{ id: course.id, name: course.name, code: course.code, instructor: course.instructor, semester: course.semester }}
       lectures={lectures.map((l) => ({ id: l.id, number: l.number, title: l.title, date: l.lecture_date, materials: l.materials, lastEdited: l.last_edited.toISOString() }))}
-      courseMaterials={materials.filter((m) => !m.lecture_id).map((m) => ({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: m.error }))}
+      courseMaterials={materials.filter((m) => !m.lecture_id).map((m) => ({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: m.error, embedStatus: m.embed_status, embedError: m.embed_error }))}
     />
   );
 }

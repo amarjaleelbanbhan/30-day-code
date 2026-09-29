@@ -27,23 +27,74 @@ Everything the student writes or uploads becomes searchable, citable course memo
 - Interactive study mode (active-recall grading, spaced flashcards, stored quizzes) — today quizzes/flashcards are generated as text.
 - Concept graph / concept map and cross-lecture relationship extraction.
 - Handwriting recognition (OCR of strokes) and OCR of image uploads — drawings are indexed by their optional caption only.
+- Scanned PDFs without a text layer produce no text (no OCR yet).
 - Infinite free-form canvas pages (drawings are blocks within the page flow), connector snapping.
 - Full offline app shell (service worker); today edits made while the server is unreachable are kept locally and synced later, but pages must be opened once online.
 - OAuth sign-in, login rate limiting, S3 storage adapter.
 
-## AI: grounded, provider-independent
-
-`src/lib/ai/provider.ts` defines `LLM` and `Embedder` interfaces with Anthropic and OpenAI-compatible implementations (keys stay server-side).
-Answers are built only from retrieved, numbered sources; the prompt requires citations, separates *course material*, *your notes* and
-*general knowledge*, and replies **“This was not found in your uploaded course material.”** when retrieval finds nothing (the student can then ask for a labelled general explanation).
-
-Without an LLM configured, Ask/Recall still work in **retrieval mode**: they return the lecture outline and the cited source excerpts directly.
-Without an embedding endpoint, search is keyword + fuzzy; configure `EMBEDDING_BASE_URL` (any OpenAI-compatible `/embeddings`, e.g. OpenAI or a local Ollama) for semantic search.
+## Course memory & recall
 
 ```
-upload → detect & validate → extract pages/slides → chunk (+section, page) → tsvector/trigram (+ embeddings)
-question → intent (recall lecture N / recall course / ask) → hybrid retrieval → numbered sources → LLM → cited answer
+upload ─► job queue ─► extract (slides/pages/speaker notes) ─► normalize ─► chunk (+lecture, slide/page, section, evidence class, hash)
+                                  └─► course vocabulary + abbreviations stated in the text ─► embed (current model only) ─► concept index
+note edit ─► autosave ─► debounced job ─► diff pieces by hash ─► insert/delete only changed pieces ─► embed only those
+question ─► intent router ─► strategy-specific hybrid retrieval ─► context builder ─► (LLM) ─► citation validation ─► answer + evidence
 ```
+
+* **Background jobs** (`src/lib/jobs.ts`) live in Postgres: they survive restarts, are debounced and retried, and failures surface in
+  the UI as *Processing failed · Retry* / *Indexing failed · Retry*. Writing notes never waits on parsing or AI.
+* **Hybrid search** (`src/lib/search.ts`): stemmed full-text with term-coverage ranking (slide titles weighted), exact-phrase bonus for
+  words adjacent in the question, typo correction from the course's own vocabulary, abbreviations the material itself defines
+  ("Process Control Block (PCB)", "also called task control block"), trigram similarity, and vector similarity — fused, then weighted by
+  evidence class: slides/teacher notes › speaker notes › student notes › textbook › AI-generated notes. "What did sir say…" boosts
+  speaker notes; "my notes" boosts student notes.
+* **Intent routing** (`src/lib/intent.ts`): definition, source lookup ("where did we study…", "first introduced"), topic
+  ("everything about…", examples, how it developed), comparison, cross-lecture, exam revision, recall lecture, recall course.
+* **Recall course** is hierarchical: cached per-lecture summaries (invalidated by an evidence hash) → grouped reduction that fits the
+  model's context window → synthesis with `[L5]` lecture links. Large lectures/topics use cited map-reduce.
+* **Concept index** (`src/lib/concepts.ts`): candidates from titles, headings, "Term: …"/"A term is …" lines and stated
+  abbreviations; mentions by phrase match; relations only by name containment or co-occurrence in ≥ 2 passages. No LLM, so no invented
+  edges. Browse at *Course → Concepts*.
+* **Answer modes**: *Course sources only* (default) never uses model knowledge and answers **“This was not found in your uploaded course
+  material.”** when evidence is missing — decided before any model call when a question's subject doesn't occur in the course (or its
+  rarest word never co-occurs with the rest, e.g. "quantum operating systems"). *Course + explanation* adds a separately generated,
+  visually separate "Additional explanation — general knowledge" block that is never allowed to cite the course.
+* **Citations** are built from stored identity only (lecture, slide/page, file, speaker notes, note section) and validated after
+  generation; unknown numbers are removed. Clicking one previews the slide/page (prev/next, highlighted) and *Open* jumps to the exact
+  slide, PDF page, or note block (highlighted).
+
+## AI setup — fully local, cloud, or search-only
+
+Nothing requires AI: without it, search, "where did we study…", recall and concept pages work extractively from your material.
+
+```bash
+# Fully local (Ollama): any chat model + any embedding model you have pulled
+LLM_PROVIDER=ollama
+LLM_BASE_URL=http://localhost:11434
+LLM_MODEL=<your chat model>
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=<your embedding model>
+
+# Any OpenAI-compatible server (llama.cpp server, vLLM, LM Studio, OpenAI, …)
+LLM_PROVIDER=openai   LLM_BASE_URL=http://localhost:8080/v1   LLM_MODEL=…   LLM_API_KEY=(optional)
+EMBEDDING_PROVIDER=openai   EMBEDDING_BASE_URL=…/v1   EMBEDDING_MODEL=…
+
+# Anthropic
+LLM_PROVIDER=anthropic   LLM_API_KEY=…   LLM_MODEL=…
+```
+
+The context window is detected from Ollama (`/api/show`, capped at 16k; override with `LLM_CONTEXT_TOKENS`) and every prompt is
+budgeted to fit it. Each vector stores the embedder identity; after switching embedding models, old vectors are ignored until
+re-embedded (`npm run reindex -- --stale`). `EMBEDDING_MIN_SIMILARITY` (default 0.5) tunes how much vector similarity can vouch for a
+question whose words don't appear in the course.
+
+## Developer tools
+
+* `/c/<courseId>/debug` (only when `NODE_ENV≠production` or `NB_DEBUG=1`): provider capabilities, index/embedding health, job queue,
+  and for any query — intent, term analysis, keyword/semantic/fuzzy/fused lists, selected context, full prompts, citation checks.
+  Reindex / re-embed buttons.
+* `npm run reindex -- --course "<name|id>" [--embeddings-only]`, `npm run reindex -- --stale`
+* `npm run debug:search -- "<course name>" "query" …`, `npm run bench` (latency on a synthetic 60-lecture course)
 
 ## Run locally
 
@@ -62,6 +113,12 @@ Tests (unit + integration against a real database; defaults to `postgres://nb:nb
 TEST_DATABASE_URL=postgres://… npm test
 npm run typecheck
 ```
+
+`tests/memory.test.ts` runs retrieval/recall checks on a deterministic 7-lecture OS course (`tests/fixtures/make_os_course.py`) with
+deliberate traps: synonyms, typos, abbreviations, plural/singular, speaker-note-only and student-note-only facts, a textbook passage that
+contradicts the lecture, and questions about things not in the course. LLM behaviour is tested against a stub Ollama server (prompt
+construction, context budgets, citation validation, modes). The semantic block runs with real local embeddings when
+`TEST_OLLAMA_URL` points at an Ollama-compatible embedding server — e.g. `python3 tests/support/ollama_compat.py` (WordLlama, from PyPI).
 
 ## Layout
 

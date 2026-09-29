@@ -93,6 +93,9 @@ textarea.input { height: auto; padding: .6rem .75rem; }
 .nb-editor .tiptap-mathematics-render { cursor: pointer; }
 .nb-editor .ProseMirror-selectednode { outline: 2px solid var(--accent-soft); border-radius: .4rem; }
 
+.nb-flash { background: var(--highlight); opacity: .45; border-radius: .4rem; mix-blend-mode: multiply; }
+:root[data-theme="dark"] .nb-flash { mix-blend-mode: screen; }
+
 /* Rendered AI/markdown answers */
 .prose-nb { line-height: 1.65; font-size: .95rem; }
 .prose-nb > * + * { margin-top: .6em; }

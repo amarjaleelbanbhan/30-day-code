@@ -64,6 +64,10 @@ describe("abbreviations and concepts", () => {
     expect(c("Summary", "Stack: temporary data storage when invoking functions")).toEqual(["stack"]);
     expect(c("Types of System Calls", "A thread is a basic unit of CPU utilization")).toEqual(["system call", "thread"]);
     expect(normConcept("Policies")).toBe("policy");
+    expect(c("Paging (cont.)", "")).toEqual(["paging"]);
+    expect(c("Deadlocks – Part 2", "")).toEqual(["deadlock"]);
+    expect(c("Scheduling II", "")).toEqual(["scheduling"]);
+    expect(c("Linux", "")).toEqual(["linux"]);
   });
 });
 

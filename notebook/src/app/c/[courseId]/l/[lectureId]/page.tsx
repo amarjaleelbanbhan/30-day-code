@@ -26,7 +26,7 @@ export default async function LecturePage({ params }: { params: Promise<{ course
       materials={materials
         .filter((m) => m.lecture_id === lectureId || !m.lecture_id)
         .sort((a, b) => Number(!!b.lecture_id) - Number(!!a.lecture_id))
-        .map((m) => ({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: m.error, mime: m.mime, lectureId: m.lecture_id, pageCount: m.page_count }))}
+        .map((m) => ({ id: m.id, filename: m.filename, kind: m.kind, status: m.status, error: m.error, embedStatus: m.embed_status, embedError: m.embed_error, mime: m.mime, lectureId: m.lecture_id, pageCount: m.page_count }))}
       note={{ content: note!.content as { type: "doc" }, updatedAt: note!.updated_at.toISOString() }}
     />
   );

@@ -63,14 +63,19 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
     if (matParam) { setSel({ id: matParam, page: pageParam }); setRight("material"); }
   }, [matParam, pageParam]);
 
-  // Jump to a note section when arriving from a note citation.
+  // Arriving from a note citation: scroll to and briefly highlight the exact note block (or section heading).
   useEffect(() => {
+    const anchor = params.get("hl");
     const section = params.get("section");
-    if (!section) return;
-    const t = setTimeout(() => {
-      const h = [...document.querySelectorAll(".nb-editor h1, .nb-editor h2, .nb-editor h3")].find((el) => el.textContent?.trim() === section.trim());
-      h?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, 300);
+    if (!anchor && !section) return;
+    let tries = 0;
+    const find = () => {
+      const el = anchor ? findNoteBlock(anchor) : [...document.querySelectorAll(".nb-editor h1, .nb-editor h2, .nb-editor h3")].find((e) => e.textContent?.trim() === section!.trim());
+      if (!el) { if (tries++ < 20) t = setTimeout(find, 150); return; }
+      el.scrollIntoView({ block: "center" });
+      flashOver(el);
+    };
+    let t = setTimeout(find, 150);
     return () => clearTimeout(t);
   }, [params]);
 
@@ -162,7 +167,8 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
     { id: "upload", label: "Upload material", run: () => setRight("material") },
     { id: "ask", label: "Ask AI", shortcut: "Ctrl ↵", run: () => openAsk() },
     { id: "recall", label: `Recall lecture ${pad2(lecture.number)}`, run: () => openAsk(`Recall lecture ${lecture.number}`) },
-    { id: "recall-course", label: "Recall course", run: () => openAsk("Recall course") },
+    { id: "recall-course", label: "Recall course", run: () => openAsk("Recall the whole course") },
+    { id: "concepts", label: "Concepts", run: () => router.push(`/c/${course.id}/concepts`) },
     { id: "quiz", label: "Create quiz", run: () => runAi("quiz", "Quiz") },
     { id: "search", label: "Search course", shortcut: "Ctrl ⇧ F", run: () => setRight("search") },
     { id: "history", label: "Version history", run: () => setRight("history") },
@@ -188,9 +194,10 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
         </div>
       )}
       {(right === "ask" || right === "search") && (
-        <AskPanel courseId={course.id} courseName={course.name} lectureId={lecture.id} tab={right} initialQuestion={askQ}
+        <AskPanel courseId={course.id} courseName={course.name} lectureId={lecture.id} lectureNumber={lecture.number} tab={right} initialQuestion={askQ}
+          onExplainSelection={() => runAi("explain", "Explain selection")} onQuiz={() => runAi("quiz", "Quiz")}
           onTab={(t) => setRight(t)} onClose={() => setRight(null)}
-          onInsert={(md) => void insertAi(md.replace(/^\*\*AI — .*\*\*\n\n/, ""), "Answer")} />
+          onInsert={(md) => void insertAi(md, "Answer")} />
       )}
       {right === "history" && (
         <div className="flex h-full flex-col">
@@ -291,7 +298,7 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
           </div>
         )}
 
-        <main className="min-w-0 flex-1 overflow-y-auto" id="notes-scroll">
+        <main className="relative min-w-0 flex-1 overflow-y-auto" id="notes-scroll">
           <div className={`mx-auto max-w-[760px] px-5 sm:px-8 ${focus ? "pt-16" : "pt-6"}`}>
             <NoteEditor lectureId={lecture.id} initial={note.content} serverUpdatedAt={note.updatedAt} compactToolbar={focus} onApi={onApi} />
           </div>
@@ -314,6 +321,34 @@ export function Workspace({ course, lecture, lectures, materials: initialMats, n
       )}
     </div>
   );
+}
+
+/** Highlights a block with an overlay (ProseMirror owns the editor DOM and would strip classes added to it). */
+function flashOver(el: Element) {
+  const host = document.getElementById("notes-scroll");
+  if (!host) return;
+  const r = el.getBoundingClientRect(), h = host.getBoundingClientRect();
+  const o = document.createElement("div");
+  o.className = "nb-flash";
+  o.dataset.flashText = (el.textContent ?? el.getAttribute("aria-label") ?? "").slice(0, 200);
+  Object.assign(o.style, { position: "absolute", pointerEvents: "none", left: `${r.left - h.left + host.scrollLeft - 6}px`, top: `${r.top - h.top + host.scrollTop - 4}px`, width: `${r.width + 12}px`, height: `${r.height + 8}px` });
+  host.appendChild(o);
+  setTimeout(() => o.remove(), 2600);
+}
+
+/** Finds the smallest note block whose text contains the anchor (whitespace-insensitive); drawings match by caption. */
+function findNoteBlock(anchor: string): HTMLElement | null {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  const a = norm(anchor);
+  const root = document.querySelector(".nb-editor");
+  if (!root || !a) return null;
+  const drawing = [...root.querySelectorAll<SVGElement>("svg[aria-label]")].find((s) => norm(s.getAttribute("aria-label") ?? "") === `drawing: ${a}`);
+  if (drawing) return drawing.closest<HTMLElement>("[data-node-view-wrapper]") ?? (drawing.parentElement as HTMLElement);
+  const blocks = [...root.querySelectorAll<HTMLElement>("p, li, h1, h2, h3, blockquote, pre, td, div[data-callout]")];
+  const hits = blocks.filter((b) => norm(b.textContent ?? "").includes(a));
+  if (hits.length) return hits.sort((x, y) => (x.textContent?.length ?? 0) - (y.textContent?.length ?? 0))[0]!;
+  const short = a.split(" ").slice(0, 4).join(" ");
+  return blocks.find((b) => norm(b.textContent ?? "").includes(short)) ?? null;
 }
 
 function PanelClose({ label, onClose }: { label: string; onClose: () => void }) {
