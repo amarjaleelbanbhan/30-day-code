@@ -14,7 +14,7 @@ import "server-only";
 // Legacy variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENAI_BASE_URL, ...) are still honoured.
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
-export type CompleteOpts = { system: string; messages: ChatMessage[]; maxTokens?: number; temperature?: number };
+export type CompleteOpts = { system: string; messages: ChatMessage[]; maxTokens?: number; temperature?: number; timeoutMs?: number };
 
 export interface LLM {
   readonly provider: string;
@@ -64,7 +64,7 @@ class OllamaLLM implements LLM {
     }
     return this.ctx;
   }
-  async complete({ system, messages, maxTokens = 2000, temperature = 0.1 }: CompleteOpts) {
+  async complete({ system, messages, maxTokens = 2000, temperature = 0.1, timeoutMs }: CompleteOpts) {
     const num_ctx = await this.contextTokens();
     const data = await http<{ message?: { content?: string } }>(`${this.base}/api/chat`, {
       method: "POST",
@@ -74,6 +74,7 @@ class OllamaLLM implements LLM {
         messages: [{ role: "system", content: system }, ...messages],
         options: { num_ctx, num_predict: maxTokens, temperature },
       }),
+      timeoutMs,
     });
     return data.message?.content ?? "";
   }
@@ -83,11 +84,12 @@ class OpenAICompatLLM implements LLM {
   readonly provider = "openai";
   constructor(private base: string, private key: string | undefined, readonly model: string, private ctx: number) {}
   async contextTokens() { return this.ctx; }
-  async complete({ system, messages, maxTokens = 2000, temperature = 0.1 }: CompleteOpts) {
+  async complete({ system, messages, maxTokens = 2000, temperature = 0.1, timeoutMs }: CompleteOpts) {
     const data = await http<{ choices: { message: { content: string } }[] }>(`${this.base}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(this.key ? { authorization: `Bearer ${this.key}` } : {}) },
       body: JSON.stringify({ model: this.model, max_tokens: maxTokens, temperature, messages: [{ role: "system", content: system }, ...messages] }),
+      timeoutMs,
     });
     return data.choices[0]?.message.content ?? "";
   }
@@ -97,11 +99,12 @@ class AnthropicLLM implements LLM {
   readonly provider = "anthropic";
   constructor(private key: string, readonly model: string, private ctx: number) {}
   async contextTokens() { return this.ctx; }
-  async complete({ system, messages, maxTokens = 2000, temperature = 0.1 }: CompleteOpts) {
+  async complete({ system, messages, maxTokens = 2000, temperature = 0.1, timeoutMs }: CompleteOpts) {
     const data = await http<{ content: { type: string; text?: string }[] }>("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": this.key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({ model: this.model, max_tokens: maxTokens, temperature, system, messages }),
+      timeoutMs,
     });
     return data.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
   }

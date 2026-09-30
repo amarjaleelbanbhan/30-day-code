@@ -68,7 +68,7 @@ export function StudySession({ course, sessionId }: { course: { id: string; name
   if (!v) return <p className="p-8 text-sm text-fg-2">Loading…</p>;
 
   const answered = v.items.filter((i) => i.result).length;
-  const label = `${KIND_LABEL[v.kind]} · ${v.scope.label ?? v.scope.type}`;
+  const label = v.scope.label && v.scope.label !== KIND_LABEL[v.kind] ? `${KIND_LABEL[v.kind]} · ${v.scope.label}` : KIND_LABEL[v.kind];
   const done = v.status !== "active";
 
   return (

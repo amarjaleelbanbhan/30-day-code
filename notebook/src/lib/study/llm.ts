@@ -25,12 +25,20 @@ export function extractJson(text: string): unknown {
   throw new Error("unterminated JSON object");
 }
 
+// Interactive calls must not hold a study request for minutes (a CPU-only local model can take that long): each call is bounded, and after a
+// timeout or unreachable provider the LLM is skipped for a while so questions and grading fall back to the rule-based path immediately.
+const CALL_TIMEOUT_MS = () => Number(process.env.STUDY_LLM_TIMEOUT_MS) || 90_000;
+const COOLDOWN_MS = 2 * 60_000;
+let llmDownUntil = 0;
+export const llmAvailable = () => Date.now() >= llmDownUntil;
+
 async function structured<T>(llm: LLM, system: string, user: string, schema: z.ZodType<T>, check: (v: T) => string | null, maxTokens: number, log?: Log): Promise<T | null> {
+  if (!llmAvailable()) return null;
   let messages: { role: "user" | "assistant"; content: string }[] = [{ role: "user", content: user }];
   for (let attempt = 0; attempt < 2; attempt++) {
     let raw = "";
     try {
-      raw = await llm.complete({ system, messages, maxTokens, temperature: attempt ? 0 : 0.3 });
+      raw = await llm.complete({ system, messages, maxTokens, temperature: attempt ? 0 : 0.3, timeoutMs: CALL_TIMEOUT_MS() });
       const parsed = schema.safeParse(extractJson(raw));
       if (!parsed.success) throw new Error(parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
       const problem = check(parsed.data);
@@ -40,7 +48,7 @@ async function structured<T>(llm: LLM, system: string, user: string, schema: z.Z
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log?.({ ok: false, attempt, raw, error: msg });
-      if (!raw) return null; // provider unreachable: don't retry
+      if (!raw) { llmDownUntil = Date.now() + COOLDOWN_MS; console.warn(`[study-llm] ${llm.provider}:${llm.model} failed (${msg}); using rule-based questions/grading for ${COOLDOWN_MS / 1000}s`); return null; } // provider unreachable or too slow: don't retry, fall back for a while
       messages = [...messages, { role: "assistant", content: raw.slice(0, 4000) }, { role: "user", content: `That reply was invalid (${msg}). Reply again with ONLY the corrected JSON object.` }];
     }
   }

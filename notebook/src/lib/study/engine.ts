@@ -135,7 +135,12 @@ export async function makeQuestion(ctx: Ctx, req0: MakeRequest): Promise<{ id: s
 
   // Deterministic candidates from stated facts (plus cross-lecture comparison with a related concept).
   const facts: Fact[] = rows.flatMap((r) => extractFacts({ chunkId: r.chunk_id, section: r.section, text: r.text, contentType: r.content_type, sourceKind: r.source_kind }));
-  const primary = facts.filter((f) => matchesConcept(f.term, concept));
+  let primary = facts.filter((f) => matchesConcept(f.term, concept));
+  if (!primary.length) {
+    // A topic heading ("Process Concept") whose slide states facts about a differently-worded term ("A process is …"): test what its own slide says.
+    const titled = new Set(rows.filter((r) => r.role === "title").map((r) => r.chunk_id));
+    primary = facts.filter((f) => titled.has(f.chunkId));
+  }
   const where = (f: Fact) => { const r = rows.find((x) => x.chunk_id === f.chunkId)!; return citationLabel({ ...r, source_kind: r.source_kind }).replace(/ · [^·]+\.(pptx|pdf|md|docx|txt)$/, "") + (r.section ? ` (${r.section})` : ""); };
   const diagramHint = rows.some((r) => /\b(diagram|draw|figure|architecture|transitions?)\b/i.test(r.text));
   let ruleDrafts: QuestionDraft[] = primary.flatMap((f) =>
@@ -159,7 +164,8 @@ export async function makeQuestion(ctx: Ctx, req0: MakeRequest): Promise<{ id: s
       for (let tries = 0; tries < 2; tries++) {
         const d = await generateQuestionLLM(llm, { concept: concept.name, qtype: pickType, level: req.level, difficulty: req.level === "remember" ? 1 : req.level === "understand" ? 2 : 3, evidence, avoid: prior.map((p) => p.prompt) });
         if (d && novel(d)) return saveQuestion(ctx, concept, { ...d, evidenceChunkIds: d.evidenceChunkIds }, evidence);
-        if (d) prior.push({ id: "", prompt: d.prompt, fingerprint: fingerprint(d.prompt, concept.name), qtype: d.qtype, generator: d.generator, asked_at: new Date() });
+        if (!d) break; // provider down / two invalid replies: use rule-based questions
+        prior.push({ id: "", prompt: d.prompt, fingerprint: fingerprint(d.prompt, concept.name), qtype: d.qtype, generator: d.generator, asked_at: new Date() });
       }
     }
   }
@@ -238,7 +244,7 @@ export async function createSession(userId: string, courseId: string, kind: Sess
     // Narrower concepts named after it *and taught in the same lecture* (so "process control" — a kind of system call — isn't pulled into "process").
     const narrower = await q<ConceptRow>(
       `SELECT k.id, k.name, k.aliases, k.lecture_count, k.first_position FROM concept_relations r JOIN concepts k ON k.id = r.a JOIN concepts b ON b.id = r.b
-       WHERE r.b = ANY($1) AND r.kind = 'part_of' AND k.first_position IS NOT DISTINCT FROM b.first_position ORDER BY k.mention_count DESC LIMIT 4`, [scope.conceptIds]);
+       WHERE r.b = ANY($1) AND k.course_id = $2 AND b.course_id = $2 AND r.kind = 'part_of' AND k.first_position IS NOT DISTINCT FROM b.first_position ORDER BY k.mention_count DESC LIMIT 4`, [concepts.map((c) => c.id), courseId]);
     concepts.push(...narrower.filter((n) => !concepts.some((c) => c.id === n.id)));
   } else if (scope.type === "weak" || kind === "weak") {
     const w = await weakAreas(userId, courseId);
@@ -559,7 +565,8 @@ export async function explainItem(userId: string, sessionId: string, itemId: str
   const llm = getLLM();
   let text: string | null = null;
   let generator = "rule";
-  if (llm) {
+  const nothingWrong = mode === "why" && !missing.length && !mis.length; // a model asked to explain a fully correct answer tends to invent gaps
+  if (llm && !nothingWrong) {
     const r = await teachLLM(llm, { mode, question: it.prompt, modelAnswer: it.answer, studentAnswer: attempt?.answer, missing, misconceptions: mis, evidence: it.evidence });
     if (r) { text = r.explanation; generator = `llm:${llm.provider}:${llm.model}`; }
   }
@@ -567,7 +574,7 @@ export async function explainItem(userId: string, sessionId: string, itemId: str
     // Deterministic, source-quoting explanation.
     const quotes = it.evidence.slice(0, 3).map((e) => `${e.excerpt.split("\n").filter(Boolean).slice(0, 5).map((l) => `> ${l.slice(0, 200)}`).join("\n")} [${e.n}]`).join("\n\n");
     text = mode === "why"
-      ? [attempt!.misconceptions.length ? `**What was wrong:** ${attempt!.misconceptions.map((m) => m.correction).join(" ")}` : "",
+      ? [nothingWrong ? "Your answer covered every key point." : "", attempt!.misconceptions.length ? `**What was wrong:** ${attempt!.misconceptions.map((m) => m.correction).join(" ")}` : "",
          missing.length ? `**What was missing:** ${missing.join("; ")}.` : "",
          `**Expected:** ${it.answer}`, `**From your course:**\n\n${quotes}`].filter(Boolean).join("\n\n")
       : [`**${it.concept_name}** — ${it.explanation || it.answer}`, `**From your course:**\n\n${quotes}`].join("\n\n");

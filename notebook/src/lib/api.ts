@@ -39,6 +39,7 @@ export function route<P = Record<string, never>>(fn: Handler<P>) {
     } catch (e) {
       if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
       if (e instanceof ZodError) return NextResponse.json({ error: "Invalid input", issues: e.issues }, { status: 400 });
+      if ((e as { code?: string })?.code === "22P02") return NextResponse.json({ error: "Not found" }, { status: 404 }); // malformed uuid in a path
       console.error(e);
       return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
     }

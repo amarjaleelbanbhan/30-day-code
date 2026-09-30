@@ -22,7 +22,7 @@ export function StudyHub({ course, overview: o, lectures }: { course: { id: stri
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [custom, setCustom] = useState(false);
+  const [custom, setCustom] = useState<false | "practice" | "exam">(false);
 
   async function go(key: string, opts: StartOpts) {
     setBusy(key);
@@ -37,7 +37,7 @@ export function StudyHub({ course, overview: o, lectures }: { course: { id: stri
   const commands = useMemo<Command[]>(() => [
     { id: "study-course", label: "Study course", run: () => go("course", { kind: "practice", scope: { type: "course", label: course.name } }) },
     { id: "study-weak", label: "Study weak areas", run: () => go("weak", { kind: "weak", scope: { type: "weak", label: "Weak areas" } }) },
-    { id: "exam", label: "Exam practice", run: () => setCustom(true) },
+    { id: "exam", label: "Exam practice", run: () => setCustom("exam") },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [course.id]);
   useRegisterCommands("study-hub", commands);
@@ -71,12 +71,12 @@ export function StudyHub({ course, overview: o, lectures }: { course: { id: stri
           disabled={!o.weak.some((w) => w.state !== "not_started")} onClick={() => go("weak", { kind: "weak", scope: { type: "weak", label: "Weak areas" } })} />
         <StartButton label={`Review due${o.due.length ? ` (${o.due.length})` : ""}`} sub="Spaced review of concepts due today" busy={busy === "due"} disabled={!o.due.length}
           onClick={() => go("due", { kind: "review", scope: { type: "due", label: "Due for review" } })} />
-        <StartButton label="Quick revision" sub="5 questions across the course" busy={busy === "quick"} onClick={() => go("quick", { kind: "quick", scope: { type: "course", label: "Quick revision" } })} />
-        <StartButton label="Exam practice" sub="No feedback until you submit" busy={busy === "exam"} onClick={() => setCustom(true)} />
-        <StartButton label="Choose lectures, types…" sub="Custom session" onClick={() => setCustom((c) => !c)} />
+        <StartButton label="Quick revision" sub="5 questions across the course" busy={busy === "quick"} onClick={() => go("quick", { kind: "quick", scope: { type: "course", label: "Whole course" } })} />
+        <StartButton label="Exam practice" sub="No feedback until you submit" busy={busy === "exam"} onClick={() => setCustom("exam")} />
+        <StartButton label="Choose lectures, types…" sub="Custom session" onClick={() => setCustom((c) => (c === "practice" ? false : "practice"))} />
       </section>
       {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
-      {custom && <CustomSetup lectures={lectures} busy={!!busy} onStart={(opts) => go("custom", opts)} />}
+      {custom && <CustomSetup key={custom} initialKind={custom} lectures={lectures} busy={!!busy} onStart={(opts) => go("custom", opts)} />}
 
       {o.weak.filter((w) => w.state !== "not_started").length > 0 && (
         <section className="mt-10">
@@ -196,8 +196,8 @@ function Legend() {
 
 const TYPE_CHOICES: QType[] = ["mcq", "tf", "fill", "definition", "list", "indirect", "comparison", "scenario", "why", "diagram"];
 
-function CustomSetup({ lectures, busy, onStart }: { lectures: Lecture[]; busy: boolean; onStart: (o: StartOpts) => void }) {
-  const [kind, setKind] = useState<"practice" | "master" | "exam">("practice");
+function CustomSetup({ initialKind, lectures, busy, onStart }: { initialKind: "practice" | "exam"; lectures: Lecture[]; busy: boolean; onStart: (o: StartOpts) => void }) {
+  const [kind, setKind] = useState<"practice" | "master" | "exam">(initialKind);
   const [sel, setSel] = useState<string[]>([]);
   const [types, setTypes] = useState<QType[]>([]);
   const [difficulty, setDifficulty] = useState<"adaptive" | 1 | 2 | 3>("adaptive");

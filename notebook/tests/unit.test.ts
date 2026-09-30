@@ -68,6 +68,10 @@ describe("abbreviations and concepts", () => {
     expect(c("Deadlocks – Part 2", "")).toEqual(["deadlock"]);
     expect(c("Scheduling II", "")).toEqual(["scheduling"]);
     expect(c("Linux", "")).toEqual(["linux"]);
+    expect(c("Lecture", "Remember: traps enter the kernel via system calls")).toEqual([]);
+    expect(c("Challenges", "Basic Concepts")).toEqual([]);
+    expect(c("Microkernels", "Benefits: easier to extend")).toEqual(["microkernel"]);
+    expect(c("Inter-Process Communication", "Two models: shared memory and message passing")).toEqual(["inter-process communication"]);
   });
 });
 

@@ -235,6 +235,13 @@ describe("authorization", () => {
     expect(await E.finishSession(otherUser, sid)).toBeNull();
     expect(await E.createSession(otherUser, courseId, "practice", { type: "course" }, { types: "mixed", difficulty: "adaptive" })).toBeNull();
     expect(await E.overview(otherUser, courseId)).toBeNull();
+    // another user's concept ids (including their narrower part_of concepts) can't be studied through the caller's own course
+    const mine = await A.repo.createCourse(otherUser, { name: "Mine" } as never);
+    const foreign = (await A.db.q<{ id: string }>("SELECT DISTINCT b AS id FROM concept_relations r JOIN concepts k ON k.id = r.b WHERE r.kind = 'part_of' AND k.course_id = $1", [courseId])).map((r) => r.id);
+    expect(foreign.length).toBeGreaterThan(0);
+    const leak = await E.createSession(otherUser, mine.id, "practice", { type: "concept", conceptIds: foreign }, { types: "mixed", difficulty: "adaptive" });
+    expect(leak && "error" in leak).toBe(true);
+    expect(await A.db.q("SELECT 1 FROM study_sessions WHERE user_id = $1", [otherUser])).toEqual([]);
     // an item id from one session can't be used through another session id
     const other = await start("quick", { type: "course" });
     expect(await E.answerItem(userId, other, cur.itemId, { answer: "x" })).toBeNull();
@@ -307,5 +314,49 @@ describe("LLM paths (stub Ollama server)", () => {
       expect(attempts).toHaveLength(1);                      // history stays consistent
       await E.finishSession(userId, sid);
     } finally { stub.off(); await stub.close(); }
+  });
+});
+
+describe("topic-heading concepts", () => {
+  it("can be studied and mastered from what their own slide states (no dead-end 'couldn't build questions')", async () => {
+    const names = ["Process Concept", "Thread Overview", "CPU Scheduling"];
+    for (const name of names) {
+      const c = await A.db.q1<{ id: string }>("SELECT id FROM concepts WHERE course_id = $1 AND lower(name) = lower($2)", [courseId, name]);
+      expect(c, name).toBeTruthy();
+      const sid = await start("master", { type: "concept", conceptIds: [c!.id], label: name });
+      expect(current(await view(sid)).prompt.length).toBeGreaterThan(10);
+    }
+  });
+  it("generic headings ('Lecture', 'Remember', 'Two models') are not offered as study concepts", async () => {
+    const bad = await A.db.q("SELECT name FROM concepts WHERE course_id = $1 AND lower(name) IN ('lecture', 'remember', 'benefits', 'two models')", [courseId]);
+    expect(bad).toEqual([]);
+  });
+});
+
+describe("unresponsive model", () => {
+  it("times out quickly, falls back to rule-based questions and grading, and skips the model for a while", async () => {
+    const http = await import("node:http");
+    let chats = 0;
+    const hung = http.createServer((req) => { if (req.url === "/api/chat") chats++; /* never answers */ });
+    await new Promise<void>((r) => hung.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${(hung.address() as { port: number }).port}`;
+    Object.assign(process.env, { LLM_PROVIDER: "ollama", LLM_BASE_URL: url, LLM_MODEL: "hung", LLM_CONTEXT_TOKENS: "4096", STUDY_LLM_TIMEOUT_MS: "400" });
+    try {
+      const t0 = Date.now();
+      const sid = await start("practice", { type: "course" }, { types: ["scenario", "definition"] }); // scenario is LLM-only; definition falls back to rules
+      const first = await view(sid);
+      expect(first.items).toHaveLength(1);
+      expect(Date.now() - t0).toBeLessThan(6000);
+      const row = (await A.db.q1<{ generator: string }>("SELECT generator FROM study_questions sq JOIN study_items si ON si.question_id = sq.id WHERE si.id = $1", [first.items[0]!.itemId]))!;
+      expect(row.generator).toMatch(/^rule:/);
+      expect(chats).toBe(1); // tried the model once, then skipped it
+      const t1 = Date.now();
+      const { item } = await answer(sid, { text: "an intermediary between the user and the hardware" });
+      expect(item.result?.grader).not.toMatch(/llm/);
+      expect(Date.now() - t1).toBeLessThan(1500); // model is skipped during the cool-down
+    } finally {
+      for (const k of ["LLM_PROVIDER", "LLM_BASE_URL", "LLM_MODEL", "LLM_CONTEXT_TOKENS", "STUDY_LLM_TIMEOUT_MS"]) delete process.env[k];
+      hung.closeAllConnections(); await new Promise<void>((r) => hung.close(() => r()));
+    }
   });
 });

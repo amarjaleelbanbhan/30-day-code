@@ -14,7 +14,10 @@ const GENERIC = new Set([
   "exercises", "homework", "assignment", "quiz", "lab", "note", "notes", "conclusion", "conclusions", "motivation",
   "background", "definition", "definitions", "key point", "key points", "today", "announcement", "announcements", "untitled",
   "my notes", "drawing", "sketch", "doubt", "doubts", "important", "diagram", "figure", "chapter", "part", "appendix", "course outline", "syllabus",
+  "lecture", "remember", "benefit", "benefits", "advantage", "advantages", "disadvantage", "disadvantages", "challenge", "challenges", "basic concept", "basic concepts", "basics", "issue", "issues",
+  "problem", "problems", "feature", "features", "characteristics", "pros and cons",
 ]);
+const COUNTED = /^(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+\w+$/i; // "Two models" is a heading for a list, not a concept
 const PREFIX = /^(?:(?:my\s+)?notes?\s+(?:on|about)|introduction to|intro to|overview of|basics of|types of|kinds of|examples of|example of|more on|the|an?|what is an?|what are)\s+/i;
 const DEF_COLON = /^\s*(?:[-•*▪◦]\s*)?([A-Za-z][A-Za-z0-9 ()/-]{1,48}?)\s*(?::|—|–|\s-\s)\s+\S/;
 const DEF_IS = /^\s*(?:[-•*▪◦]\s*)?(?:An?|The)\s+([a-z][a-z0-9 -]{1,40}?)\s+(?:is|are)\s+(?:an?|the|defined as|a kind of)\b/i;
@@ -29,7 +32,7 @@ function cleanName(raw: string): string | null {
     .replace(/[:.;,!?]+$/, "").replace(/\s+/g, " ").trim();
   while (PREFIX.test(s)) s = s.replace(PREFIX, "");
   const words = s.split(" ");
-  if (!s || s.length < 2 || words.length > 5 || /^\d/.test(s) || /[=<>{}]/.test(s)) return null;
+  if (!s || s.length < 2 || words.length > 5 || /^\d/.test(s) || /[=<>{}]/.test(s) || COUNTED.test(s)) return null;
   const norm = normConcept(s);
   if (!norm || GENERIC.has(norm) || norm.length < 3) return null;
   if (tokens(s).every((t) => GENERIC.has(t) || t.length < 3)) return null;
