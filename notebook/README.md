@@ -16,6 +16,7 @@ Everything the student writes or uploads becomes searchable, citable course memo
 | Version history: automatic snapshots (every 10 min, before AI inserts and restores), view, compare (line diff), restore | ✅ |
 | Uploads with signature validation + size limit: PDF, PPTX, DOCX, TXT, Markdown, images | ✅ |
 | Extraction: PPTX slide titles/bullets/tables/speaker notes (in presentation order), PDF per page, DOCX/Markdown by section | ✅ |
+| Local OCR (Tesseract, English): photos/screenshots of printed slides, whiteboards and handouts, and scanned PDF pages with no text layer — searchable, cited and studyable like any other material; unreadable images are stored but never indexed | ✅ |
 | Material panel beside notes: prev/next, zoom, search slides, copy, insert excerpt with citation, original PDF/image view | ✅ |
 | Course memory: chunks linked to course / lecture / material / page-or-slide / note section | ✅ |
 | Hybrid search: full-text (stemmed, ranked) + trigram fuzzy + optional vector similarity, fused with RRF | ✅ |
@@ -25,8 +26,7 @@ Everything the student writes or uploads becomes searchable, citable course memo
 
 ### Not built yet (next phases)
 - Concept graph / concept map and cross-lecture relationship extraction.
-- Handwriting recognition (OCR of strokes) and OCR of image uploads — drawings are indexed by their optional caption only.
-- Scanned PDFs without a text layer produce no text (no OCR yet).
+- Handwriting recognition (OCR of strokes, and of handwritten photos) — drawings are indexed by their optional caption only; OCR is for printed text and English only.
 - Infinite free-form canvas pages (drawings are blocks within the page flow), connector snapping.
 - Full offline app shell (service worker); today edits made while the server is unreachable are kept locally and synced later, but pages must be opened once online.
 - OAuth sign-in, login rate limiting, S3 storage adapter.
@@ -111,6 +111,14 @@ The context window is detected from Ollama (`/api/show`, capped at 16k; override
 budgeted to fit it. Each vector stores the embedder identity; after switching embedding models, old vectors are ignored until
 re-embedded (`npm run reindex -- --stale`). `EMBEDDING_MIN_SIMILARITY` (default 0.5) tunes how much vector similarity can vouch for a
 question whose words don't appear in the course.
+
+## OCR
+
+Runs inside the background extract job (never in a request), fully offline: `tesseract.js` with the English model from
+`@tesseract.js-data/eng`. A page is OCR'd when it is an image upload or a PDF page with (almost) no text layer. Output below
+`OCR_MIN_CONFIDENCE` (default 60) or with fewer than 3 words is discarded, so blurry photos, handwriting and diagrams can't
+become search hits, concepts or study questions. OCR'd pages get no title (a misread first line must not become a concept).
+`OCR_MAX_PAGES` (default 300) caps OCR per file; `OCR_LANG_PATH` points at a directory holding other `*.traineddata.gz` models.
 
 ## Developer tools
 

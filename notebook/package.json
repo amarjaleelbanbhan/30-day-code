@@ -14,6 +14,8 @@
     "bench": "NODE_OPTIONS=--conditions=react-server tsx scripts/bench.ts"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.9",
+    "@tesseract.js-data/eng": "^1.0.0",
     "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-link": "^3.31.3",
     "@tiptap/extension-mathematics": "^3.31.3",
@@ -36,6 +38,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
+    "tesseract.js": "^7.0.0",
     "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },

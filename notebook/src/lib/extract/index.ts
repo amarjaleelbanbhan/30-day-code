@@ -1,4 +1,5 @@
 import { extractDocx } from "./docx";
+import { ocr } from "./ocr";
 import { extractPdf } from "./pdf";
 import { extractPptx } from "./pptx";
 import { extractText } from "./text";
@@ -56,6 +57,9 @@ export async function extract(type: FileType, bytes: Uint8Array): Promise<Extrac
     case "pptx": return extractPptx(bytes);
     case "docx": return extractDocx(bytes);
     case "txt": case "md": return extractText(new TextDecoder().decode(bytes), type === "md");
-    default: return []; // images: stored and viewable; not text-indexed (no OCR yet)
+    default: { // images: printed text is recognised locally; nothing readable → stored and viewable, but not indexed
+      const body = await ocr(bytes).catch((e) => { console.warn("[ocr] failed:", e instanceof Error ? e.message : e); return ""; });
+      return body ? [{ pageNo: 1, title: null, body, speakerNotes: null }] : [];
+    }
   }
 }
